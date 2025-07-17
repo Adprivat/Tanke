@@ -11,8 +11,6 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.util.function.BiConsumer;
-
 public class OrderDialog extends Stage {
     private final ComboBox<FuelType> fuelTypeBox;
     private final TextField amountField;
@@ -20,6 +18,8 @@ public class OrderDialog extends Stage {
     private final Label totalLabel;
     private final Label warningLabel;
     private final Button orderButton;
+    private final Button closeButton;
+    private QuadFunction<FuelType, Double, Double, Double, Void> onOrder;
     private double marketPrice = 0.0;
     private double maxCapacity = 0.0;
     private double currentLevel = 0.0;
@@ -27,7 +27,8 @@ public class OrderDialog extends Stage {
     private double deliveredAmount = 0.0;
     private double totalCost = 0.0;
 
-    public OrderDialog(Stage owner, BiConsumer<Double, Double> onOrder, FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels) {
+    public OrderDialog(Stage owner, QuadFunction<FuelType, Double, Double, Double, Void> onOrder, FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels) {
+        this.onOrder = onOrder;
         this.initOwner(owner);
         this.initModality(Modality.APPLICATION_MODAL);
         this.setTitle("Kraftstoff bestellen");
@@ -43,6 +44,7 @@ public class OrderDialog extends Stage {
         warningLabel = new Label("");
         warningLabel.setStyle("-fx-text-fill: orange; -fx-font-size: 12;");
         orderButton = new Button("Bestellen");
+        closeButton = new Button("Schließen");
 
         GridPane grid = new GridPane();
         grid.setHgap(10);
@@ -57,7 +59,9 @@ public class OrderDialog extends Stage {
         grid.add(new Label("Gesamtkosten (€):"), 0, 3);
         grid.add(totalLabel, 1, 3);
 
-        VBox vbox = new VBox(10, grid, warningLabel, new HBox(10, orderButton));
+        HBox buttonBox = new HBox(10, orderButton, closeButton);
+        buttonBox.setAlignment(Pos.CENTER);
+        VBox vbox = new VBox(10, grid, warningLabel, buttonBox);
         vbox.setAlignment(Pos.CENTER);
         vbox.setPadding(new Insets(10));
 
@@ -83,8 +87,12 @@ public class OrderDialog extends Stage {
             } else {
                 warningLabel.setText("");
             }
-            this.close();
+            if (onOrder != null && orderedType != null && totalCost > 0) {
+                onOrder.apply(orderedType, amount, delivered, total);
+            }
+            amountField.setText("100");
         });
+        closeButton.setOnAction(e -> this.close());
         updateTotal();
     }
 
@@ -118,4 +126,10 @@ public class OrderDialog extends Stage {
     public FuelType getOrderedType() { return orderedType; }
     public double getDeliveredAmount() { return deliveredAmount; }
     public double getTotalCost() { return totalCost; }
+
+    // Hilfs-Interface für vier Parameter (da Java kein QuadFunction hat)
+    @FunctionalInterface
+    public interface QuadFunction<A, B, C, D, R> {
+        R apply(A a, B b, C c, D d);
+    }
 } 

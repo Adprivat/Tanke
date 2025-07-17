@@ -38,6 +38,7 @@ import javafx.scene.control.MenuBar;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import de.tankstelle.manager.view.components.StatisticsWindow;
+import javafx.scene.layout.Region;
 
 public class Main extends Application {
     @Override
@@ -71,21 +72,31 @@ public class Main extends Application {
         Button orderButton = new Button("Kraftstoff bestellen");
         
 
-        // Geld-Anzeige oben rechts
-        Label cashLabel = new Label();
-        cashLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #1a7f37;");
-        HBox cashBox = new HBox(cashLabel);
-        cashBox.setAlignment(Pos.CENTER_RIGHT);
-        cashBox.setPadding(new Insets(16, 32, 0, 0));
-        root.setTop(cashBox);
-
         // Menüband mit Statistik-Button
         MenuBar menuBar = new MenuBar();
         Menu menu = new Menu("Menü");
         MenuItem statsItem = new MenuItem("Statistik anzeigen");
         menu.getItems().add(statsItem);
         menuBar.getMenus().add(menu);
-        root.setTop(menuBar);
+        // root.setTop(menuBar); // Entfernt, da wir eine neue HBox oben setzen
+
+        // Geld-Anzeige oben rechts
+        Label cashLabel = new Label();
+        cashLabel.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #1a7f37;");
+        HBox cashBox = new HBox(cashLabel);
+        cashBox.setAlignment(Pos.CENTER_RIGHT);
+        cashBox.setPadding(new Insets(0, 32, 0, 0));
+
+        // Menüleiste und Guthaben gemeinsam oben anzeigen
+        HBox topBar = new HBox();
+        topBar.setAlignment(Pos.CENTER_LEFT);
+        topBar.setSpacing(10);
+        topBar.getChildren().addAll(menuBar);
+        // Platzhalter für flexibles Layout
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+        topBar.getChildren().addAll(spacer, cashBox);
+        root.setTop(topBar);
 
         // Spiel-Log
         TextArea gameLog = new TextArea();
@@ -182,25 +193,22 @@ public class Main extends Application {
             }
             OrderDialog dialog = new OrderDialog(
                 ((Stage) orderButton.getScene().getWindow()),
-                (delivered, totalCost) -> {}, // Callback nicht mehr genutzt
+                (type, orderedAmount, delivered, totalCost) -> {
+                    if (type != null && totalCost > 0) {
+                        gameState.setCash(gameState.getCash() - totalCost);
+                        gameState.getTanks().get(type).refill(delivered);
+                        gameState.notifyObservers();
+                        if (delivered < orderedAmount) {
+                            showInfo("Bestellung abgeschlossen!\nAchtung: Es konnten nur " + String.format("%.0f", delivered) + " L geliefert werden. Sie haben trotzdem den vollen Preis bezahlt.");
+                        } else {
+                            showInfo("Bestellung erfolgreich! Geliefert: " + String.format("%.0f", delivered) + " L.");
+                        }
+                    }
+                    return null;
+                },
                 types, marketPrices, maxCaps, levels
             );
             dialog.showAndWait();
-            FuelType type = dialog.getOrderedType();
-            double deliveredAmount = dialog.getDeliveredAmount();
-            double totalCost = dialog.getTotalCost();
-            if (type != null && dialog.getTotalCost() > 0) {
-                gameState.setCash(gameState.getCash() - dialog.getTotalCost());
-                gameState.getTanks().get(type).refill(dialog.getDeliveredAmount());
-                gameState.notifyObservers();
-                double orderedAmount = dialog.parseAmount();
-                double deliveredOrderedAmount = dialog.getDeliveredAmount();
-                if (deliveredOrderedAmount < orderedAmount) {
-                    showInfo("Bestellung abgeschlossen!\nAchtung: Es konnten nur " + String.format("%.0f", deliveredOrderedAmount) + " L geliefert werden. Sie haben trotzdem den vollen Preis bezahlt.");
-                } else {
-                    showInfo("Bestellung erfolgreich! Geliefert: " + String.format("%.0f", deliveredOrderedAmount) + " L.");
-                }
-            }
         });
 
         // Tankkapazität unter Balken anzeigen

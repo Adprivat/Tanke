@@ -32,3 +32,6 @@ Thumbs.db
 
 # Kiro/Spec-Ordner (optional, falls nicht versioniert werden soll)
 .kiro/ 
+
+TankstellenManager/ 
+*.zip
