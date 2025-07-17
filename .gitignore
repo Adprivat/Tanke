@@ -1,0 +1,34 @@
+# Maven
+/target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Java
+*.class
+
+# Sonstige
+*.swp
+*.swo
+
+# Kiro/Spec-Ordner (optional, falls nicht versioniert werden soll)
+.kiro/ 
