@@ -39,6 +39,10 @@ import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import de.tankstelle.manager.view.components.StatisticsWindow;
 import javafx.scene.layout.Region;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 
 public class Main extends Application {
     @Override
@@ -76,7 +80,9 @@ public class Main extends Application {
         MenuBar menuBar = new MenuBar();
         Menu menu = new Menu("Menü");
         MenuItem statsItem = new MenuItem("Statistik anzeigen");
+        MenuItem settingsItem = new MenuItem("Einstellungen");
         menu.getItems().add(statsItem);
+        menu.getItems().add(settingsItem);
         menuBar.getMenus().add(menu);
         // root.setTop(menuBar); // Entfernt, da wir eine neue HBox oben setzen
 
@@ -122,16 +128,16 @@ public class Main extends Application {
 
         // Preisvalidierung und Feedback
         priceSuper95.getPriceField().textProperty().addListener((obs, oldVal, newVal) -> {
-            validatePriceInput(priceSuper95, 1.50);
+            validatePriceInput(priceSuper95);
         });
         priceSuper95e10.getPriceField().textProperty().addListener((obs, oldVal, newVal) -> {
-            validatePriceInput(priceSuper95e10, 1.45);
+            validatePriceInput(priceSuper95e10);
         });
         priceSuperPlus.getPriceField().textProperty().addListener((obs, oldVal, newVal) -> {
-            validatePriceInput(priceSuperPlus, 1.70);
+            validatePriceInput(priceSuperPlus);
         });
         priceDiesel.getPriceField().textProperty().addListener((obs, oldVal, newVal) -> {
-            validatePriceInput(priceDiesel, 1.30);
+            validatePriceInput(priceDiesel);
         });
 
         // Preisänderung an Spiellogik übergeben
@@ -191,7 +197,8 @@ public class Main extends Application {
                 maxCaps[i] = gameState.getTanks().get(types[i]).getCapacity();
                 levels[i] = gameState.getTanks().get(types[i]).getCurrentLevel();
             }
-            OrderDialog dialog = new OrderDialog(
+            final OrderDialog[] dialogRef = new OrderDialog[1];
+            dialogRef[0] = new OrderDialog(
                 ((Stage) orderButton.getScene().getWindow()),
                 (type, orderedAmount, delivered, totalCost) -> {
                     if (type != null && totalCost > 0) {
@@ -203,12 +210,19 @@ public class Main extends Application {
                         } else {
                             showInfo("Bestellung erfolgreich! Geliefert: " + String.format("%.0f", delivered) + " L.");
                         }
+                        // Nach der Bestellung die aktuellen Werte neu setzen
+                        for (int i = 0; i < types.length; i++) {
+                            marketPrices[i] = marketService.getCurrentMarketPrice(types[i]);
+                            maxCaps[i] = gameState.getTanks().get(types[i]).getCapacity();
+                            levels[i] = gameState.getTanks().get(types[i]).getCurrentLevel();
+                        }
+                        dialogRef[0].updateMarketInfo(types, marketPrices, maxCaps, levels);
                     }
                     return null;
                 },
                 types, marketPrices, maxCaps, levels
             );
-            dialog.showAndWait();
+            dialogRef[0].showAndWait();
         });
 
         // Tankkapazität unter Balken anzeigen
@@ -238,13 +252,50 @@ public class Main extends Application {
 
         simulationService.setLogConsumer(msg -> Platform.runLater(() -> {
             if (gameLog.getText().length() > 4000) gameLog.clear();
-            gameLog.appendText(msg + "\n");
+            if (msg.startsWith("WELTMARKTPREIS-ÄNDERUNG")) {
+                // Versuche, die Zeile rot darzustellen (TextArea unterstützt kein echtes Rich-Text)
+                // Daher: Markiere die Zeile mit [WICHTIG] und Großbuchstaben
+                gameLog.appendText("[WICHTIG] " + msg + "\n");
+            } else {
+                gameLog.appendText(msg + "\n");
+            }
             gameLog.setScrollTop(Double.MAX_VALUE);
         }));
 
         statsItem.setOnAction(e -> {
             StatisticsWindow statsWin = new StatisticsWindow(gameState);
             statsWin.show();
+        });
+
+        // Einstellungen-Status
+        final boolean[] autoCloseOnMarketChange = {false};
+
+        settingsItem.setOnAction(e -> {
+            Dialog<Boolean> dialog = new Dialog<>();
+            dialog.setTitle("Einstellungen");
+            dialog.setHeaderText("Verhalten bei Weltmarktpreis-Änderung");
+            CheckBox autoCloseBox = new CheckBox("Tankstelle automatisch schließen, wenn sich die Weltmarktpreise ändern");
+            autoCloseBox.setSelected(autoCloseOnMarketChange[0]);
+            dialog.getDialogPane().setContent(autoCloseBox);
+            ButtonType okButton = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(okButton, ButtonType.CANCEL);
+            dialog.setResultConverter(btn -> {
+                if (btn == okButton) {
+                    return autoCloseBox.isSelected();
+                }
+                return null;
+            });
+            dialog.showAndWait().ifPresent(val -> {
+                if (val != null) autoCloseOnMarketChange[0] = val;
+            });
+        });
+
+        // Automatisches Schließen bei Marktpreisänderung
+        simulationService.setOnMarketPriceChangeCallback(changed -> {
+            if (autoCloseOnMarketChange[0]) {
+                simulationService.pauseSimulation();
+                Platform.runLater(() -> simButton.setText("Tankstelle öffnen"));
+            }
         });
 
         Scene scene = new Scene(root, 1000, 700);
@@ -256,14 +307,12 @@ public class Main extends Application {
     /**
      * Prüft Preisfeld und gibt Feedback (z.B. zu niedrig, negativ, Formatfehler).
      */
-    private void validatePriceInput(PriceInputComponent comp, double minPrice) {
+    private void validatePriceInput(PriceInputComponent comp) {
         String text = comp.getPriceText().replace(",", ".");
         try {
             double value = Double.parseDouble(text);
             if (value < 0) {
                 comp.setFeedback("Preis darf nicht negativ sein!", true);
-            } else if (value < minPrice) {
-                comp.setFeedback("Preis zu niedrig!", true);
             } else {
                 comp.setFeedback("Preis gültig", false);
             }
@@ -297,7 +346,20 @@ public class Main extends Application {
         Alert alert = new Alert(AlertType.INFORMATION);
         alert.setTitle("Bestellung");
         alert.setHeaderText(null);
-        alert.setContentText(msg);
+        // TextArea für lange Meldungen
+        TextArea textArea = new TextArea(msg);
+        textArea.setWrapText(true);
+        textArea.setEditable(false);
+        textArea.setFocusTraversable(false);
+        textArea.setPrefRowCount(5);
+        textArea.setPrefColumnCount(40);
+        textArea.setMinWidth(400);
+        textArea.setMaxWidth(Double.MAX_VALUE);
+        textArea.setMaxHeight(Double.MAX_VALUE);
+        textArea.setStyle("-fx-background-color: transparent; -fx-border-color: transparent; -fx-font-size: 14;");
+        alert.getDialogPane().setContent(textArea);
+        alert.getDialogPane().setMinWidth(420);
+        alert.getDialogPane().setMinHeight(180);
         alert.showAndWait();
     }
 

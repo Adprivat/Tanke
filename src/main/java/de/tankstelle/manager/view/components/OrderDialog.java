@@ -77,6 +77,10 @@ public class OrderDialog extends Stage {
         orderButton.setOnAction(e -> {
             double amount = parseAmount();
             double freeSpace = maxCapacity - currentLevel;
+            if (freeSpace <= 0) {
+                warningLabel.setText("Fehler: Tank ist voll, keine Bestellung möglich!");
+                return;
+            }
             double delivered = Math.min(amount, freeSpace);
             double total = amount * marketPrice;
             orderedType = fuelTypeBox.getSelectionModel().getSelectedItem();
@@ -96,7 +100,7 @@ public class OrderDialog extends Stage {
         updateTotal();
     }
 
-    private void updateMarketInfo(FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels) {
+    public void updateMarketInfo(FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels) {
         int idx = fuelTypeBox.getSelectionModel().getSelectedIndex();
         marketPrice = marketPrices[idx];
         maxCapacity = maxCapacities[idx];

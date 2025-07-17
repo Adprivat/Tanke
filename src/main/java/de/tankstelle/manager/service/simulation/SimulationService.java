@@ -9,6 +9,8 @@ import de.tankstelle.manager.model.customer.Customer;
 import de.tankstelle.manager.model.tank.InsufficientFuelException;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.EnumMap;
+import java.util.Map;
 
 public class SimulationService implements Runnable {
     private final GameState gameState;
@@ -17,6 +19,10 @@ public class SimulationService implements Runnable {
     private boolean running = false;
     private Thread thread;
     private Consumer<String> logConsumer;
+    private int tickCounter = 0;
+    private Map<FuelType, Double> lastMarketPrices = new EnumMap<>(FuelType.class);
+    private Consumer<Boolean> onMarketPriceChangeCallback;
+    private boolean firstMarketUpdateDone = false;
 
     public SimulationService(GameState gameState, CustomerSimulationService customerSimulationService, MarketService marketService) {
         this.gameState = gameState;
@@ -40,6 +46,10 @@ public class SimulationService implements Runnable {
         this.logConsumer = logConsumer;
     }
 
+    public void setOnMarketPriceChangeCallback(Consumer<Boolean> callback) {
+        this.onMarketPriceChangeCallback = callback;
+    }
+
     @Override
     public void run() {
         while (running) {
@@ -53,8 +63,41 @@ public class SimulationService implements Runnable {
     }
 
     public void updateGameState() {
-        // Marktpreise aktualisieren
-        marketService.updateMarketPrices();
+        tickCounter++;
+        boolean marketPriceChanged = false;
+        if (tickCounter % 120 == 1) { // alle 120 Ticks (2 Minuten)
+            if (!firstMarketUpdateDone) {
+                // Nur initialisieren, aber keine Callback/Meldung
+                for (FuelType type : FuelType.values()) {
+                    lastMarketPrices.put(type, marketService.getCurrentMarketPrice(type));
+                }
+                marketService.updateMarketPrices();
+                for (FuelType type : FuelType.values()) {
+                    lastMarketPrices.put(type, marketService.getCurrentMarketPrice(type));
+                }
+                firstMarketUpdateDone = true;
+                return;
+            }
+            // Vorherige Preise merken
+            for (FuelType type : FuelType.values()) {
+                lastMarketPrices.put(type, marketService.getCurrentMarketPrice(type));
+            }
+            marketService.updateMarketPrices();
+            // Prüfen, ob sich ein Preis geändert hat
+            for (FuelType type : FuelType.values()) {
+                double oldPrice = lastMarketPrices.get(type);
+                double newPrice = marketService.getCurrentMarketPrice(type);
+                if (Math.abs(newPrice - oldPrice) > 0.0001) {
+                    marketPriceChanged = true;
+                    if (logConsumer != null) {
+                        logConsumer.accept("WELTMARKTPREIS-ÄNDERUNG: Neuer Preis für " + typeToString(type) + ": " + String.format("%.2f", newPrice) + " €/L");
+                    }
+                    if (onMarketPriceChangeCallback != null) {
+                        onMarketPriceChangeCallback.accept(true);
+                    }
+                }
+            }
+        }
         // Für jede Kraftstoffart Kunden generieren und Verkäufe simulieren
         for (FuelType type : FuelType.values()) {
             double marketPrice = marketService.getCurrentMarketPrice(type);
