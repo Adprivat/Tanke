@@ -43,18 +43,32 @@ import javafx.scene.control.Dialog;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import de.tankstelle.manager.view.upgrade.UpgradeShopDialog;
+import de.tankstelle.manager.service.upgrade.UpgradeShopService;
+import de.tankstelle.manager.model.upgrade.types.TankCapacityUpgrade;
+import de.tankstelle.manager.model.upgrade.types.EfficiencyUpgrade;
+import de.tankstelle.manager.model.upgrade.Upgrade;
+import de.tankstelle.manager.model.fuel.FuelType;
+import java.util.Arrays;
+import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import de.tankstelle.manager.model.upgrade.types.OrderAutomationUpgrade;
 
 public class Main extends Application {
+    // Referenzen auf Tankanzeigen für spätere Updates
+    private TankDisplayComponent super95, super95e10, superPlus, diesel;
+
     @Override
     public void start(Stage primaryStage) {
         BorderPane root = new BorderPane();
         HBox tankBox = new HBox(24);
         tankBox.setAlignment(Pos.CENTER);
 
-        TankDisplayComponent super95 = new TankDisplayComponent("Super 95");
-        TankDisplayComponent super95e10 = new TankDisplayComponent("Super 95 E10");
-        TankDisplayComponent superPlus = new TankDisplayComponent("Super Plus");
-        TankDisplayComponent diesel = new TankDisplayComponent("Diesel");
+        super95 = new TankDisplayComponent("Super 95");
+        super95e10 = new TankDisplayComponent("Super 95 E10");
+        superPlus = new TankDisplayComponent("Super Plus");
+        diesel = new TankDisplayComponent("Diesel");
 
         // Testwerte für die Füllstände
         super95.setFillLevel(0.75);
@@ -81,8 +95,10 @@ public class Main extends Application {
         Menu menu = new Menu("Menü");
         MenuItem statsItem = new MenuItem("Statistik anzeigen");
         MenuItem settingsItem = new MenuItem("Einstellungen");
+        MenuItem upgradesItem = new MenuItem("Upgrades");
         menu.getItems().add(statsItem);
         menu.getItems().add(settingsItem);
+        menu.getItems().add(upgradesItem);
         menuBar.getMenus().add(menu);
         // root.setTop(menuBar); // Entfernt, da wir eine neue HBox oben setzen
 
@@ -202,6 +218,10 @@ public class Main extends Application {
                 ((Stage) orderButton.getScene().getWindow()),
                 (type, orderedAmount, delivered, totalCost) -> {
                     if (type != null && totalCost > 0) {
+                        if (gameState.getCash() < totalCost) {
+                            showInfo("Nicht genug Guthaben für diese Bestellung!\nBenötigt: " + String.format("%.2f", totalCost) + " €\nVerfügbar: " + String.format("%.2f", gameState.getCash()) + " €");
+                            return null;
+                        }
                         gameState.setCash(gameState.getCash() - totalCost);
                         gameState.getTanks().get(type).refill(delivered);
                         gameState.notifyObservers();
@@ -220,16 +240,13 @@ public class Main extends Application {
                     }
                     return null;
                 },
-                types, marketPrices, maxCaps, levels
+                types, marketPrices, maxCaps, levels, gameState
             );
             dialogRef[0].showAndWait();
         });
 
         // Tankkapazität unter Balken anzeigen
-        super95.setCapacity(gameState.getTanks().get(FuelType.SUPER_95).getCapacity());
-        super95e10.setCapacity(gameState.getTanks().get(FuelType.SUPER_95_E10).getCapacity());
-        superPlus.setCapacity(gameState.getTanks().get(FuelType.SUPER_PLUS).getCapacity());
-        diesel.setCapacity(gameState.getTanks().get(FuelType.DIESEL).getCapacity());
+        updateTankCapacities(gameState);
 
         // --- SimulationService vorbereiten ---
         CustomerSimulationService customerSimService = new CustomerSimulationService();
@@ -298,6 +315,84 @@ public class Main extends Application {
             }
         });
 
+        // Upgrade-Stufen pro Tank
+        Map<FuelType, Integer> tankUpgradeLevels = new HashMap<>();
+        Map<FuelType, Double> tankUpgradePrices = new HashMap<>();
+        double basePrice = 5000;
+        for (FuelType type : FuelType.values()) {
+            tankUpgradeLevels.put(type, 0);
+            tankUpgradePrices.put(type, basePrice);
+        }
+
+        // Dynamische Upgrade-Liste: immer das nächste Upgrade pro Tank
+        List<Upgrade> dynamicUpgrades = new java.util.ArrayList<>();
+        for (FuelType type : FuelType.values()) {
+            int level = tankUpgradeLevels.get(type) + 1;
+            double price = tankUpgradePrices.get(type);
+            dynamicUpgrades.add(new TankCapacityUpgrade(
+                "tank_" + type + "_" + level,
+                "Tankvergrößerung " + type,
+                String.format("Erhöht die Kapazität für %s um 500L (Stufe %d).", type, level),
+                price,
+                List.of(),
+                type,
+                500,
+                level
+            ));
+        }
+        dynamicUpgrades.add(new EfficiencyUpgrade("eff1", "Effizienzsteigerung", "Erhöht die Gewinnmarge um 2%.", 3000, List.of(), 0.0, 0.02));
+        double automationBasePrice = 8000;
+        for (FuelType type : FuelType.values()) {
+            dynamicUpgrades.add(new OrderAutomationUpgrade(
+                "auto_" + type,
+                "Bestellautomatisierung " + type,
+                String.format("Ermöglicht die automatische Nachbestellung von %s.", type),
+                automationBasePrice,
+                List.of(),
+                type
+            ));
+        }
+
+        UpgradeShopService upgradeShopService = new UpgradeShopService(dynamicUpgrades, gameState) {
+            @Override
+            public PurchaseResult purchaseUpgrade(String upgradeId) {
+                // Finde das Upgrade
+                Upgrade upgrade = allUpgrades.stream()
+                    .filter(upg -> upg.getId().equals(upgradeId))
+                    .findFirst().orElse(null);
+                if (upgrade == null) return PurchaseResult.NOT_FOUND;
+                if (!canAfford(upgrade)) return PurchaseResult.INSUFFICIENT_FUNDS;
+                if (!upgrade.canInstall(gameState)) return PurchaseResult.PREREQUISITES_NOT_MET;
+                gameState.setCash(gameState.getCash() - upgrade.getCost());
+                upgrade.install(gameState);
+                // Nach Kauf: Stufe erhöhen, Preis verdoppeln, neues Upgrade generieren
+                if (upgrade instanceof TankCapacityUpgrade tcu) {
+                    FuelType type = tcu.getFuelType();
+                    int newLevel = tankUpgradeLevels.get(type) + 1;
+                    tankUpgradeLevels.put(type, newLevel);
+                    double newPrice = tankUpgradePrices.get(type) * 2;
+                    tankUpgradePrices.put(type, newPrice);
+                    // Neues Upgrade für diesen Tank erzeugen und zur Liste hinzufügen
+                    allUpgrades.removeIf(u -> u instanceof TankCapacityUpgrade t && t.getFuelType() == type && !t.isInstalled());
+                    allUpgrades.add(new TankCapacityUpgrade(
+                        "tank_" + type + "_" + (newLevel + 1),
+                        "Tankvergrößerung " + type,
+                        String.format("Erhöht die Kapazität für %s um 500L (Stufe %d).", type, newLevel + 1),
+                        newPrice,
+                        List.of(),
+                        type,
+                        500,
+                        newLevel + 1
+                    ));
+                }
+                return PurchaseResult.SUCCESS;
+            }
+        };
+        upgradesItem.setOnAction(e -> {
+            UpgradeShopDialog dialog = new UpgradeShopDialog(upgradeShopService, () -> updateTankCapacities(gameState));
+            dialog.showAndWait();
+        });
+
         Scene scene = new Scene(root, 1000, 700);
         primaryStage.setTitle("Tankstellen-Manager");
         primaryStage.setScene(scene);
@@ -340,6 +435,16 @@ public class Main extends Application {
         } catch (Exception e) {
             // Fehler ignorieren, Feedback bleibt
         }
+    }
+
+    /**
+     * Aktualisiert die Tankkapazitäten in allen Tankanzeigen.
+     */
+    private void updateTankCapacities(GameState gameState) {
+        super95.setCapacity(gameState.getTanks().get(FuelType.SUPER_95).getCapacity());
+        super95e10.setCapacity(gameState.getTanks().get(FuelType.SUPER_95_E10).getCapacity());
+        superPlus.setCapacity(gameState.getTanks().get(FuelType.SUPER_PLUS).getCapacity());
+        diesel.setCapacity(gameState.getTanks().get(FuelType.DIESEL).getCapacity());
     }
 
     private void showInfo(String msg) {

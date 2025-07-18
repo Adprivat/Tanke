@@ -181,6 +181,34 @@ public class SimulationService implements Runnable {
                 }
             }
         }
+        // Automatisierungs-Logik: Für alle Tanks mit aktivierter Automatisierung
+        for (FuelType type : FuelType.values()) {
+            if (gameState.isAutomationEnabled(type)) {
+                FuelTank tank = gameState.getTanks().get(type);
+                double threshold = gameState.getAutomationThreshold(type);
+                double fillPercent = tank.getCurrentLevel() / tank.getCapacity();
+                if (fillPercent < threshold) {
+                    double targetLevel = tank.getCapacity() * 0.8;
+                    double toOrder = targetLevel - tank.getCurrentLevel();
+                    if (toOrder > 0) {
+                        double marketPrice = marketService.getCurrentMarketPrice(type);
+                        double totalCost = toOrder * marketPrice;
+                        if (gameState.getCash() >= totalCost) {
+                            gameState.setCash(gameState.getCash() - totalCost);
+                            tank.refill(toOrder);
+                            if (logConsumer != null) {
+                                logConsumer.accept("[AUTOMATISIERTE BESTELLUNG] " + String.format("%.0f L %s für %.2f € nachbestellt (auf 80%%)", toOrder, typeToString(type), totalCost));
+                            }
+                            gameState.notifyObservers();
+                        } else {
+                            if (logConsumer != null) {
+                                logConsumer.accept("[AUTOMATISIERTE BESTELLUNG] Nicht genug Geld für automatische Bestellung von " + typeToString(type));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // Nach jedem Tick Observer benachrichtigen
         gameState.notifyObservers();
     }

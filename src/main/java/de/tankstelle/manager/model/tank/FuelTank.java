@@ -7,7 +7,7 @@ import java.util.List;
 public class FuelTank {
     private final Fuel fuelType;
     private double currentLevel;
-    private final double capacity;
+    private double capacity;
     private final List<TankObserver> observers = new ArrayList<>();
 
     public FuelTank(Fuel fuelType, double capacity, double initialLevel) {
@@ -75,6 +75,19 @@ public class FuelTank {
     private void notifyEmpty() {
         for (TankObserver observer : observers) {
             observer.onEmpty(this);
+        }
+    }
+
+    /**
+     * Erhöht oder verringert die Tankkapazität um amount. Kapazität kann nicht negativ werden.
+     * Falls currentLevel > neue Kapazität, wird currentLevel angepasst.
+     */
+    public synchronized void increaseCapacity(double amount) {
+        capacity += amount;
+        if (capacity < 0) capacity = 0;
+        if (currentLevel > capacity) {
+            currentLevel = capacity;
+            notifyLevelChanged();
         }
     }
 } 

@@ -2,9 +2,11 @@ package de.tankstelle.manager.model.station;
 
 import de.tankstelle.manager.model.fuel.FuelType;
 import de.tankstelle.manager.model.tank.FuelTank;
+import de.tankstelle.manager.model.upgrade.Upgrade;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.EnumMap;
 
 public class GameState {
     private double cash;
@@ -14,6 +16,12 @@ public class GameState {
     private LocalDateTime gameTime;
     private final List<GameStateObserver> observers = new ArrayList<>();
     private double customerSatisfaction = 1.0; // 1.0 = sehr zufrieden, 0.0 = sehr unzufrieden
+    private final Map<String, Upgrade> installedUpgrades = new HashMap<>();
+    private final EconomyModifiers economyModifiers = new EconomyModifiers();
+    private final CustomerModifiers customerModifiers = new CustomerModifiers();
+    // Automatisierungs-Status und Schwellenwerte pro Kraftstoffart
+    private final Map<FuelType, Boolean> automationEnabled = new EnumMap<>(FuelType.class);
+    private final Map<FuelType, Double> automationThreshold = new EnumMap<>(FuelType.class);
 
     public GameState(double initialCash, Map<FuelType, FuelTank> tanks, Map<FuelType, Double> prices, GameStatistics statistics) {
         this.cash = initialCash;
@@ -89,5 +97,41 @@ public class GameState {
         for (GameStateObserver observer : observers) {
             observer.onGameStateChanged(this);
         }
+    }
+
+    public void addUpgrade(Upgrade upgrade) {
+        installedUpgrades.put(upgrade.getId(), upgrade);
+        // Optional: Observer-Benachrichtigung
+    }
+
+    public boolean hasUpgrade(String upgradeId) {
+        return installedUpgrades.containsKey(upgradeId);
+    }
+
+    public List<Upgrade> getInstalledUpgrades() {
+        return new ArrayList<>(installedUpgrades.values());
+    }
+
+    public EconomyModifiers getEconomyModifiers() {
+        return economyModifiers;
+    }
+
+    public CustomerModifiers getCustomerModifiers() {
+        return customerModifiers;
+    }
+
+    public boolean isAutomationEnabled(FuelType type) {
+        return automationEnabled.getOrDefault(type, false);
+    }
+    public void setAutomationEnabled(FuelType type, boolean enabled) {
+        automationEnabled.put(type, enabled);
+        notifyObservers();
+    }
+    public double getAutomationThreshold(FuelType type) {
+        return automationThreshold.getOrDefault(type, 0.2); // Default 20%
+    }
+    public void setAutomationThreshold(FuelType type, double threshold) {
+        automationThreshold.put(type, threshold);
+        notifyObservers();
     }
 } 

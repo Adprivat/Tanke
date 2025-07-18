@@ -1,6 +1,9 @@
 package de.tankstelle.manager.view.components;
 
 import de.tankstelle.manager.model.fuel.FuelType;
+import de.tankstelle.manager.model.station.GameState;
+import de.tankstelle.manager.model.upgrade.Upgrade;
+import de.tankstelle.manager.model.upgrade.types.OrderAutomationUpgrade;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -27,7 +30,7 @@ public class OrderDialog extends Stage {
     private double deliveredAmount = 0.0;
     private double totalCost = 0.0;
 
-    public OrderDialog(Stage owner, QuadFunction<FuelType, Double, Double, Double, Void> onOrder, FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels) {
+    public OrderDialog(Stage owner, QuadFunction<FuelType, Double, Double, Double, Void> onOrder, FuelType[] types, double[] marketPrices, double[] maxCapacities, double[] currentLevels, GameState gameState) {
         this.onOrder = onOrder;
         this.initOwner(owner);
         this.initModality(Modality.APPLICATION_MODAL);
@@ -61,13 +64,45 @@ public class OrderDialog extends Stage {
 
         HBox buttonBox = new HBox(10, orderButton, closeButton);
         buttonBox.setAlignment(Pos.CENTER);
-        VBox vbox = new VBox(10, grid, warningLabel, buttonBox);
+        // Automatisierung-UI (nur wenn Upgrade gekauft)
+        VBox automationBox = new VBox(6);
+        automationBox.setPadding(new Insets(8, 0, 0, 0));
+        automationBox.setStyle("-fx-border-color: #bbb; -fx-border-radius: 4; -fx-background-color: #f6f6f6;");
+        Label autoTitle = new Label("Automatisierung");
+        autoTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 13;");
+        CheckBox enableAuto = new CheckBox("Automatische Bestellung aktivieren");
+        Slider thresholdSlider = new Slider(0.05, 0.5, 0.2);
+        thresholdSlider.setShowTickLabels(true);
+        thresholdSlider.setShowTickMarks(true);
+        thresholdSlider.setMajorTickUnit(0.1);
+        thresholdSlider.setMinorTickCount(1);
+        thresholdSlider.setBlockIncrement(0.01);
+        Label thresholdLabel = new Label("Schwellenwert: 20 %");
+        thresholdSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            thresholdLabel.setText(String.format("Schwellenwert: %.0f %%", newVal.doubleValue() * 100));
+        });
+        automationBox.getChildren().addAll(autoTitle, enableAuto, thresholdSlider, thresholdLabel);
+
+        // Sichtbarkeit und Initialwerte je nach Upgrade
+        fuelTypeBox.setOnAction(e -> updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel));
+        // Initial setzen
+        updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel);
+
+        enableAuto.setOnAction(e -> {
+            FuelType type = fuelTypeBox.getSelectionModel().getSelectedItem();
+            gameState.setAutomationEnabled(type, enableAuto.isSelected());
+        });
+        thresholdSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            FuelType type = fuelTypeBox.getSelectionModel().getSelectedItem();
+            gameState.setAutomationThreshold(type, newVal.doubleValue());
+        });
+
+        VBox vbox = new VBox(10, grid, warningLabel, automationBox, buttonBox);
         vbox.setAlignment(Pos.CENTER);
         vbox.setPadding(new Insets(10));
 
         this.setScene(new Scene(vbox));
-        this.setWidth(350);
-        this.setHeight(300);
+        this.setMinWidth(350);
 
         // Initialwerte setzen
         updateMarketInfo(types, marketPrices, maxCapacities, currentLevels);
@@ -130,6 +165,19 @@ public class OrderDialog extends Stage {
     public FuelType getOrderedType() { return orderedType; }
     public double getDeliveredAmount() { return deliveredAmount; }
     public double getTotalCost() { return totalCost; }
+
+    private void updateAutomationUI(GameState gameState, VBox automationBox, CheckBox enableAuto, Slider thresholdSlider, Label thresholdLabel) {
+        FuelType type = fuelTypeBox.getSelectionModel().getSelectedItem();
+        boolean hasUpgrade = gameState.getInstalledUpgrades().stream().anyMatch(u -> u instanceof OrderAutomationUpgrade oau && oau.getFuelType() == type);
+        automationBox.setVisible(hasUpgrade);
+        automationBox.setManaged(hasUpgrade);
+        if (hasUpgrade) {
+            enableAuto.setSelected(gameState.isAutomationEnabled(type));
+            double thresh = gameState.getAutomationThreshold(type);
+            thresholdSlider.setValue(thresh);
+            thresholdLabel.setText(String.format("Schwellenwert: %.0f %%", thresh * 100));
+        }
+    }
 
     // Hilfs-Interface für vier Parameter (da Java kein QuadFunction hat)
     @FunctionalInterface
