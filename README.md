@@ -16,6 +16,7 @@ Das Projekt ist nachwievor WIP.
 - Simulation von Kunden und Umsatz
 - Statistikanzeige (Umsatz, Gewinn, Verkaufsvolumen, Kundenzufriedenheit)
 - Erweiterbar und modular durch OOP-Prinzipien
+- Upgradesystem
 
 ---
 
@@ -39,7 +40,7 @@ java -jar TankstellenManager/app/TankstellenManager-1.0-SNAPSHOT.jar
 ```
 
 Das Programm kann auch ohne jede Installation getestet werden. 
-Unter www.adrianschultz.de/TankstellenmanagerV001.zip können sie das Programm herunterladen.
+Unter www.adrianschultz.de/Tankstellenmanager.zip können sie das Programm herunterladen.
 Entpacken sie es vollständig und führen sie die Anwendung aus. Lassen sie Java ein Moment Zeit.
 
 ---
