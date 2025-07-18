@@ -84,9 +84,15 @@ public class OrderDialog extends Stage {
         automationBox.getChildren().addAll(autoTitle, enableAuto, thresholdSlider, thresholdLabel);
 
         // Sichtbarkeit und Initialwerte je nach Upgrade
-        fuelTypeBox.setOnAction(e -> updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel));
+        // fuelTypeBox.setOnAction(e -> updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel));
         // Initial setzen
         updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel);
+
+        // Kombinierter Listener für Kraftstoffart-Wechsel
+        fuelTypeBox.setOnAction(e -> {
+            updateMarketInfo(types, marketPrices, maxCapacities, currentLevels);
+            updateAutomationUI(gameState, automationBox, enableAuto, thresholdSlider, thresholdLabel);
+        });
 
         enableAuto.setOnAction(e -> {
             FuelType type = fuelTypeBox.getSelectionModel().getSelectedItem();
@@ -102,11 +108,15 @@ public class OrderDialog extends Stage {
         vbox.setPadding(new Insets(10));
 
         this.setScene(new Scene(vbox));
-        this.setMinWidth(350);
+        // Automatische Größenanpassung
+        this.setMinWidth(0);
+        this.setMinHeight(0);
+        this.sizeToScene();
+        this.getScene().getWindow().sizeToScene();
 
         // Initialwerte setzen
         updateMarketInfo(types, marketPrices, maxCapacities, currentLevels);
-        fuelTypeBox.setOnAction(e -> updateMarketInfo(types, marketPrices, maxCapacities, currentLevels));
+        // fuelTypeBox.setOnAction(e -> updateMarketInfo(types, marketPrices, maxCapacities, currentLevels));
         amountField.textProperty().addListener((obs, oldVal, newVal) -> updateTotal());
 
         orderButton.setOnAction(e -> {
