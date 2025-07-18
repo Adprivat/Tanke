@@ -7,6 +7,9 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.layout.Pane;
+import javafx.scene.control.Button;
+import java.util.function.BiConsumer;
+import javafx.scene.layout.HBox;
 
 public class TankDisplayComponent extends VBox {
     private final Label fuelTypeLabel;
@@ -18,6 +21,10 @@ public class TankDisplayComponent extends VBox {
     private double capacity = 0.0;
     private final double width = 60;
     private final double height = 200;
+
+    // Callback für Main: (TankDisplayComponent, Prozentwert)
+    private BiConsumer<TankDisplayComponent, Double> shortcutCallback;
+    public void setShortcutCallback(BiConsumer<TankDisplayComponent, Double> cb) { this.shortcutCallback = cb; }
 
     public TankDisplayComponent(String fuelType) {
         this.setAlignment(Pos.CENTER);
@@ -58,6 +65,20 @@ public class TankDisplayComponent extends VBox {
         capacityLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #555;");
 
         this.getChildren().addAll(fuelTypeLabel, barPane, warningLabel, capacityLabel);
+
+        // Shortcut-Buttons für Direktkauf
+        HBox shortcutBox = new HBox(16);
+        shortcutBox.setAlignment(Pos.CENTER);
+        Button btn25 = new Button("+25% füllen");
+        btn25.setStyle("-fx-font-size: 10; -fx-background-color: #e0eaff; -fx-font-weight: bold; -fx-padding: 2 6 2 6;");
+        Button btn50 = new Button("+50% füllen");
+        btn50.setStyle("-fx-font-size: 10; -fx-background-color: #d0ffd0; -fx-font-weight: bold; -fx-padding: 2 6 2 6;");
+        shortcutBox.getChildren().addAll(btn25, btn50);
+        this.getChildren().remove(shortcutBox);
+        this.getChildren().add(shortcutBox);
+
+        btn25.setOnAction(e -> { if (this.shortcutCallback != null) shortcutCallback.accept(this, 0.25); });
+        btn50.setOnAction(e -> { if (this.shortcutCallback != null) shortcutCallback.accept(this, 0.50); });
     }
 
     /**

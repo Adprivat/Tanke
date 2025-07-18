@@ -7,6 +7,7 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.scene.control.ScrollPane;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import java.util.List;
@@ -30,11 +31,14 @@ public class UpgradeShopDialog extends Stage {
         categoryBox.getSelectionModel().selectFirst();
         categoryBox.setOnAction(e -> refreshList());
 
+        ScrollPane scrollPane = new ScrollPane(upgradeListBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         VBox root = new VBox(16,
                 new Label("Kategorie wählen:"),
                 categoryBox,
                 new Separator(),
-                upgradeListBox,
+                scrollPane,
                 infoLabel
         );
         root.setPadding(new Insets(16));

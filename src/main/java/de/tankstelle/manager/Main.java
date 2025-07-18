@@ -54,6 +54,8 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import de.tankstelle.manager.model.upgrade.types.OrderAutomationUpgrade;
+import de.tankstelle.manager.model.upgrade.types.PriceAutomationUpgrade;
+import de.tankstelle.manager.view.components.PriceAutomationDialog;
 
 public class Main extends Application {
     // Referenzen auf Tankanzeigen für spätere Updates
@@ -85,6 +87,12 @@ public class Main extends Application {
         PriceInputComponent priceSuper95e10 = new PriceInputComponent("Super 95 E10", 1.78);
         PriceInputComponent priceSuperPlus = new PriceInputComponent("Super Plus", 2.02);
         PriceInputComponent priceDiesel = new PriceInputComponent("Diesel", 1.69);
+        Map<FuelType, PriceInputComponent> priceInputs = Map.of(
+            FuelType.SUPER_95, priceSuper95,
+            FuelType.SUPER_95_E10, priceSuper95e10,
+            FuelType.SUPER_PLUS, priceSuperPlus,
+            FuelType.DIESEL, priceDiesel
+        );
         priceBox.getChildren().addAll(priceSuper95, priceSuper95e10, priceSuperPlus, priceDiesel);
         DashboardComponent dashboard = new DashboardComponent();
         Button orderButton = new Button("Kraftstoff bestellen");
@@ -245,6 +253,36 @@ public class Main extends Application {
             dialogRef[0].showAndWait();
         });
 
+        // Shortcut-Callbacks für Direktkauf
+        Map<FuelType, TankDisplayComponent> tankDisplays = Map.of(
+            FuelType.SUPER_95, super95,
+            FuelType.SUPER_95_E10, super95e10,
+            FuelType.SUPER_PLUS, superPlus,
+            FuelType.DIESEL, diesel
+        );
+        for (FuelType type : FuelType.values()) {
+            TankDisplayComponent tankComp = tankDisplays.get(type);
+            tankComp.setShortcutCallback((comp, percent) -> {
+                FuelTank tank = gameState.getTanks().get(type);
+                double toOrder = tank.getCapacity() * percent;
+                double maxOrder = tank.getCapacity() - tank.getCurrentLevel();
+                toOrder = Math.max(0, Math.min(toOrder, maxOrder));
+                if (toOrder <= 0) {
+                    showInfo("Tank ist bereits ausreichend gefüllt.");
+                    return;
+                }
+                double marktpreis = marketService.getCurrentMarketPrice(type);
+                double totalCost = toOrder * marktpreis;
+                if (gameState.getCash() < totalCost) {
+                    showInfo("Nicht genug Guthaben für diese Bestellung!\nBenötigt: " + String.format("%.2f", totalCost) + " €\nVerfügbar: " + String.format("%.2f", gameState.getCash()) + " €");
+                    return;
+                }
+                gameState.setCash(gameState.getCash() - totalCost);
+                tank.refill(toOrder);
+                gameState.notifyObservers();
+            });
+        }
+
         // Tankkapazität unter Balken anzeigen
         updateTankCapacities(gameState);
 
@@ -352,6 +390,17 @@ public class Main extends Application {
                 type
             ));
         }
+        double priceAutoBasePrice = 9000;
+        for (FuelType type : FuelType.values()) {
+            dynamicUpgrades.add(new PriceAutomationUpgrade(
+                "priceauto_" + type,
+                "Preisautomatisierung " + type,
+                String.format("Passt den Verkaufspreis von %s automatisch an den Marktpreis an.", type),
+                priceAutoBasePrice,
+                List.of(),
+                type
+            ));
+        }
 
         UpgradeShopService upgradeShopService = new UpgradeShopService(dynamicUpgrades, gameState) {
             @Override
@@ -389,9 +438,26 @@ public class Main extends Application {
             }
         };
         upgradesItem.setOnAction(e -> {
-            UpgradeShopDialog dialog = new UpgradeShopDialog(upgradeShopService, () -> updateTankCapacities(gameState));
+            UpgradeShopDialog dialog = new UpgradeShopDialog(upgradeShopService, () -> {
+                updateTankCapacities(gameState);
+                updatePriceAutomationUI(gameState, priceInputs, marketService);
+            });
             dialog.showAndWait();
         });
+
+        // Preisautomatisierungs-Dialog-Callback setzen
+        for (FuelType type : FuelType.values()) {
+            PriceInputComponent comp = priceInputs.get(type);
+            comp.setPriceAutoDialogCallback(() -> {
+                boolean initialEnabled = gameState.isPriceAutomationEnabled(type);
+                double initialMargin = gameState.getPriceAutomationMargin(type);
+                PriceAutomationDialog dlg = new PriceAutomationDialog(initialEnabled, initialMargin);
+                dlg.showAndWait();
+                gameState.setPriceAutomationEnabled(type, dlg.getResultEnabled());
+                gameState.setPriceAutomationMargin(type, dlg.getResultMargin());
+                updatePriceAutomationUI(gameState, priceInputs, marketService);
+            });
+        }
 
         Scene scene = new Scene(root, 1000, 700);
         primaryStage.setTitle("Tankstellen-Manager");
@@ -445,6 +511,27 @@ public class Main extends Application {
         super95e10.setCapacity(gameState.getTanks().get(FuelType.SUPER_95_E10).getCapacity());
         superPlus.setCapacity(gameState.getTanks().get(FuelType.SUPER_PLUS).getCapacity());
         diesel.setCapacity(gameState.getTanks().get(FuelType.DIESEL).getCapacity());
+    }
+
+    // Hilfsmethode: Setzt Preisautomatisierung für alle PriceInputComponents
+    private void updatePriceAutomationUI(GameState gameState, Map<FuelType, PriceInputComponent> priceInputs, MarketService marketService) {
+        for (FuelType type : FuelType.values()) {
+            PriceInputComponent comp = priceInputs.get(type);
+            double marktpreis = marketService.getCurrentMarketPrice(type);
+            comp.setAutomationUI(gameState, type, marktpreis);
+            comp.setAutomationCallback(enabled -> {
+                gameState.setPriceAutomationEnabled(type, enabled);
+                updatePriceAutomationUI(gameState, priceInputs, marketService);
+            });
+            comp.setMarginCallback(margin -> {
+                gameState.setPriceAutomationMargin(type, margin);
+                updatePriceAutomationUI(gameState, priceInputs, marketService);
+            });
+            if (gameState.isPriceAutomationEnabled(type)) {
+                double margin = gameState.getPriceAutomationMargin(type);
+                comp.updateAutomatedPrice(marktpreis, margin);
+            }
+        }
     }
 
     private void showInfo(String msg) {

@@ -22,6 +22,9 @@ public class GameState {
     // Automatisierungs-Status und Schwellenwerte pro Kraftstoffart
     private final Map<FuelType, Boolean> automationEnabled = new EnumMap<>(FuelType.class);
     private final Map<FuelType, Double> automationThreshold = new EnumMap<>(FuelType.class);
+    // Preisautomatisierung pro Kraftstoffart
+    private final Map<FuelType, Boolean> priceAutomationEnabled = new EnumMap<>(FuelType.class);
+    private final Map<FuelType, Double> priceAutomationMargin = new EnumMap<>(FuelType.class);
 
     public GameState(double initialCash, Map<FuelType, FuelTank> tanks, Map<FuelType, Double> prices, GameStatistics statistics) {
         this.cash = initialCash;
@@ -132,6 +135,21 @@ public class GameState {
     }
     public void setAutomationThreshold(FuelType type, double threshold) {
         automationThreshold.put(type, threshold);
+        notifyObservers();
+    }
+
+    public boolean isPriceAutomationEnabled(FuelType type) {
+        return priceAutomationEnabled.getOrDefault(type, false);
+    }
+    public void setPriceAutomationEnabled(FuelType type, boolean enabled) {
+        priceAutomationEnabled.put(type, enabled);
+        notifyObservers();
+    }
+    public double getPriceAutomationMargin(FuelType type) {
+        return priceAutomationMargin.getOrDefault(type, 10.0); // Default 10%
+    }
+    public void setPriceAutomationMargin(FuelType type, double margin) {
+        priceAutomationMargin.put(type, margin);
         notifyObservers();
     }
 } 
