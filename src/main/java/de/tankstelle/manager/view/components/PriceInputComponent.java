@@ -65,6 +65,15 @@ public class PriceInputComponent extends VBox {
         boolean hasUpgrade = gameState.getInstalledUpgrades().stream().anyMatch(u -> u instanceof PriceAutomationUpgrade pau && pau.getFuelType() == type);
         priceAutoBtn.setVisible(hasUpgrade);
         priceAutoBtn.setManaged(hasUpgrade);
+        boolean autoActive = hasUpgrade && gameState.isPriceAutomationEnabled(type);
+        priceField.setEditable(!autoActive);
+        priceField.setDisable(autoActive);
+        if (autoActive) {
+            feedbackLabel.setText("Preis wird automatisch berechnet");
+            feedbackLabel.setTextFill(javafx.scene.paint.Color.BLUE);
+        } else {
+            feedbackLabel.setText("");
+        }
     }
 
     // Callback, der beim Klick auf den Button ausgeführt wird (z.B. um Dialog zu öffnen)

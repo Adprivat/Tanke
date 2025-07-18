@@ -2,7 +2,11 @@ package de.tankstelle.manager.model.customer;
 
 import de.tankstelle.manager.model.fuel.FuelType;
 
+import java.util.Random;
+
 public class LoyalCustomer extends Customer {
+    private static final Random purchaseRandom = new Random();
+
     public LoyalCustomer(FuelType fuelPreference) {
         super(CustomerType.LOYAL, 0.2, fuelPreference);
     }
@@ -15,7 +19,7 @@ public class LoyalCustomer extends Customer {
 
     @Override
     public double calculatePurchaseAmount() {
-        // Kauft durchschnittlich 50 Liter
-        return 50.0;
+        // Zufällige Kaufmenge zwischen 5 und 100 Litern
+        return 5 + purchaseRandom.nextInt(96); // 5 bis 100 inkl.
     }
 } 

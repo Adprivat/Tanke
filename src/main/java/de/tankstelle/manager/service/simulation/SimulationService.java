@@ -7,10 +7,15 @@ import de.tankstelle.manager.model.fuel.FuelType;
 import de.tankstelle.manager.model.tank.FuelTank;
 import de.tankstelle.manager.model.customer.Customer;
 import de.tankstelle.manager.model.tank.InsufficientFuelException;
+import de.tankstelle.manager.model.upgrade.Upgrade;
+import de.tankstelle.manager.model.upgrade.types.WorkshopServiceUpgrade;
+import de.tankstelle.manager.model.upgrade.types.SupermarketServiceUpgrade;
+import de.tankstelle.manager.model.upgrade.types.CarWashServiceUpgrade;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Random;
 
 public class SimulationService implements Runnable {
     private final GameState gameState;
@@ -107,21 +112,94 @@ public class SimulationService implements Runnable {
             List<Customer> customers = customerSimulationService.generateCustomers(priceDelta, baseFrequency);
             FuelTank tank = gameState.getTanks().get(type);
             GameStatistics stats = gameState.getStatistics();
+            Random workshopRandom = new Random();
             for (Customer customer : customers) {
                 if (customer.getFuelPreference() == type) {
                     double amount = customer.calculatePurchaseAmount();
+                    boolean tookWorkshop = false;
+                    double workshopRevenue = 0;
+                    boolean tookSupermarket = false;
+                    double supermarketRevenue = 0;
+                    // NEU: Listen für gezogene Services
+                    List<String> workshopServicesTaken = new java.util.ArrayList<>();
+                    List<String> supermarketServicesTaken = new java.util.ArrayList<>();
+                    // Waschstraße-Logik: Nach erfolgreichem Benzinkauf
+                    List<Upgrade> upgrades = gameState.getInstalledUpgrades();
+                    List<CarWashServiceUpgrade> carWashUpgrades = upgrades.stream()
+                        .filter(u -> u instanceof CarWashServiceUpgrade)
+                        .map(u -> (CarWashServiceUpgrade) u)
+                        .filter(cw -> cw.getServiceRevenue() > 0.0)
+                        .toList();
+                    boolean tookCarWash = false;
+                    double carWashRevenue = 0;
+                    List<String> carWashServicesTaken = new java.util.ArrayList<>();
+                    // Werkstatt-Logik: Nach erfolgreichem Benzinkauf
+                    List<WorkshopServiceUpgrade> workshopUpgrades = upgrades.stream()
+                        .filter(u -> u instanceof WorkshopServiceUpgrade)
+                        .map(u -> (WorkshopServiceUpgrade) u)
+                        .filter(ws -> ws.getServiceRevenue() > 0.0)
+                        .toList();
+                    List<SupermarketServiceUpgrade> supermarketUpgrades = upgrades.stream()
+                        .filter(u -> u instanceof SupermarketServiceUpgrade)
+                        .map(u -> (SupermarketServiceUpgrade) u)
+                        .filter(sm -> sm.getServiceRevenue() > 0.0)
+                        .toList();
+                    // Benzinkauf-Logik wie gehabt
                     if (priceDelta <= 0.10) {
                         // Sehr zufrieden, kauft
                         try {
                             tank.dispenseFuel(amount);
                             double profit = (stationPrice - marketPrice) * amount;
                             double revenue = stationPrice * amount;
+                            // Werkstatt: Für jede Dienstleistung 10%-Chance
+                            for (WorkshopServiceUpgrade ws : workshopUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.10) {
+                                    workshopRevenue += ws.getServiceRevenue();
+                                    tookWorkshop = true;
+                                    workshopServicesTaken.add(ws.getName() + String.format(": %.2f €", ws.getServiceRevenue()));
+                                }
+                            }
+                            // Supermarkt: Für jede Dienstleistung 20%-Chance
+                            for (SupermarketServiceUpgrade sm : supermarketUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.20) {
+                                    supermarketRevenue += sm.getServiceRevenue();
+                                    tookSupermarket = true;
+                                    supermarketServicesTaken.add(sm.getName() + String.format(": %.2f €", sm.getServiceRevenue()));
+                                }
+                            }
+                            // Waschstraße: Für jede Dienstleistung 10%-Chance
+                            for (CarWashServiceUpgrade cw : carWashUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.10) {
+                                    carWashRevenue += cw.getServiceRevenue();
+                                    tookCarWash = true;
+                                    carWashServicesTaken.add(cw.getName() + String.format(": %.2f €", cw.getServiceRevenue()));
+                                }
+                            }
                             stats.recordSale(type, amount, profit);
-                            gameState.setCash(gameState.getCash() + revenue);
+                            gameState.setCash(gameState.getCash() + revenue + workshopRevenue + supermarketRevenue + carWashRevenue);
                             gameState.addSatisfactionDelta(+0.01);
                             if (logConsumer != null) {
-                                String log = String.format("Kunde kaufte %.0f L %s für %.2f € und war sehr zufrieden.", amount, typeToString(type), revenue);
-                                logConsumer.accept(log);
+                                StringBuilder log = new StringBuilder(String.format("Kunde kaufte %.0f L %s für %.2f €", amount, typeToString(type), revenue));
+                                if (tookWorkshop) {
+                                    log.append(" und nahm Werkstattservice in Anspruch");
+                                    if (!workshopServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", workshopServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookSupermarket) {
+                                    log.append(" und kaufte im Supermarkt ein");
+                                    if (!supermarketServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", supermarketServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookCarWash) {
+                                    log.append(" und nutzte die Waschstraße");
+                                    if (!carWashServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", carWashServicesTaken)).append(")");
+                                    }
+                                }
+                                log.append(".");
+                                logConsumer.accept(log.toString());
                             }
                         } catch (Exception e) {
                             gameState.addSatisfactionDelta(-0.07);
@@ -136,12 +214,52 @@ public class SimulationService implements Runnable {
                             tank.dispenseFuel(amount);
                             double profit = (stationPrice - marketPrice) * amount;
                             double revenue = stationPrice * amount;
+                            for (WorkshopServiceUpgrade ws : workshopUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.10) {
+                                    workshopRevenue += ws.getServiceRevenue();
+                                    tookWorkshop = true;
+                                    workshopServicesTaken.add(ws.getName() + String.format(": %.2f €", ws.getServiceRevenue()));
+                                }
+                            }
+                            for (SupermarketServiceUpgrade sm : supermarketUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.20) {
+                                    supermarketRevenue += sm.getServiceRevenue();
+                                    tookSupermarket = true;
+                                    supermarketServicesTaken.add(sm.getName() + String.format(": %.2f €", sm.getServiceRevenue()));
+                                }
+                            }
+                            for (CarWashServiceUpgrade cw : carWashUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.10) {
+                                    carWashRevenue += cw.getServiceRevenue();
+                                    tookCarWash = true;
+                                    carWashServicesTaken.add(cw.getName() + String.format(": %.2f €", cw.getServiceRevenue()));
+                                }
+                            }
                             stats.recordSale(type, amount, profit);
-                            gameState.setCash(gameState.getCash() + revenue);
+                            gameState.setCash(gameState.getCash() + revenue + workshopRevenue + supermarketRevenue + carWashRevenue);
                             gameState.addSatisfactionDelta(+0.005);
                             if (logConsumer != null) {
-                                String log = String.format("Kunde kaufte %.0f L %s für %.2f € und war zufrieden.", amount, typeToString(type), revenue);
-                                logConsumer.accept(log);
+                                StringBuilder log = new StringBuilder(String.format("Kunde kaufte %.0f L %s für %.2f €", amount, typeToString(type), revenue));
+                                if (tookWorkshop) {
+                                    log.append(" und nahm Werkstattservice in Anspruch");
+                                    if (!workshopServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", workshopServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookSupermarket) {
+                                    log.append(" und kaufte im Supermarkt ein");
+                                    if (!supermarketServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", supermarketServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookCarWash) {
+                                    log.append(" und nutzte die Waschstraße");
+                                    if (!carWashServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", carWashServicesTaken)).append(")");
+                                    }
+                                }
+                                log.append(".");
+                                logConsumer.accept(log.toString());
                             }
                         } catch (Exception e) {
                             gameState.addSatisfactionDelta(-0.07);
@@ -156,12 +274,52 @@ public class SimulationService implements Runnable {
                             tank.dispenseFuel(amount);
                             double profit = (stationPrice - marketPrice) * amount;
                             double revenue = stationPrice * amount;
+                            for (WorkshopServiceUpgrade ws : workshopUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.10) {
+                                    workshopRevenue += ws.getServiceRevenue();
+                                    tookWorkshop = true;
+                                    workshopServicesTaken.add(ws.getName() + String.format(": %.2f €", ws.getServiceRevenue()));
+                                }
+                            }
+                            for (SupermarketServiceUpgrade sm : supermarketUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.20) {
+                                    supermarketRevenue += sm.getServiceRevenue();
+                                    tookSupermarket = true;
+                                    supermarketServicesTaken.add(sm.getName() + String.format(": %.2f €", sm.getServiceRevenue()));
+                                }
+                            }
+                            for (CarWashServiceUpgrade cw : carWashUpgrades) {
+                                if (workshopRandom.nextDouble() < 0.20) {
+                                    carWashRevenue += cw.getServiceRevenue();
+                                    tookCarWash = true;
+                                    carWashServicesTaken.add(cw.getName() + String.format(": %.2f €", cw.getServiceRevenue()));
+                                }
+                            }
                             stats.recordSale(type, amount, profit);
-                            gameState.setCash(gameState.getCash() + revenue);
+                            gameState.setCash(gameState.getCash() + revenue + workshopRevenue + supermarketRevenue + carWashRevenue);
                             gameState.addSatisfactionDelta(-0.02);
                             if (logConsumer != null) {
-                                String log = String.format("Kunde kaufte %.0f L %s für %.2f € war aber unzufrieden wegen des hohen Preises.", amount, typeToString(type), revenue);
-                                logConsumer.accept(log);
+                                StringBuilder log = new StringBuilder(String.format("Kunde kaufte %.0f L %s für %.2f €", amount, typeToString(type), revenue));
+                                if (tookWorkshop) {
+                                    log.append(" und nahm Werkstattservice in Anspruch");
+                                    if (!workshopServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", workshopServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookSupermarket) {
+                                    log.append(" und kaufte im Supermarkt ein");
+                                    if (!supermarketServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", supermarketServicesTaken)).append(")");
+                                    }
+                                }
+                                if (tookCarWash) {
+                                    log.append(" und nutzte die Waschstraße");
+                                    if (!carWashServicesTaken.isEmpty()) {
+                                        log.append(" (").append(String.join(", ", carWashServicesTaken)).append(")");
+                                    }
+                                }
+                                log.append(".");
+                                logConsumer.accept(log.toString());
                             }
                         } catch (Exception e) {
                             gameState.addSatisfactionDelta(-0.07);

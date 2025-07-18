@@ -46,16 +46,16 @@ import javafx.scene.control.ButtonType;
 import de.tankstelle.manager.view.upgrade.UpgradeShopDialog;
 import de.tankstelle.manager.service.upgrade.UpgradeShopService;
 import de.tankstelle.manager.model.upgrade.types.TankCapacityUpgrade;
-import de.tankstelle.manager.model.upgrade.types.EfficiencyUpgrade;
-import de.tankstelle.manager.model.upgrade.Upgrade;
-import de.tankstelle.manager.model.fuel.FuelType;
-import java.util.Arrays;
-import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 import de.tankstelle.manager.model.upgrade.types.OrderAutomationUpgrade;
 import de.tankstelle.manager.model.upgrade.types.PriceAutomationUpgrade;
 import de.tankstelle.manager.view.components.PriceAutomationDialog;
+import de.tankstelle.manager.model.upgrade.types.WorkshopServiceUpgrade;
+import de.tankstelle.manager.model.upgrade.types.SupermarketServiceUpgrade;
+import de.tankstelle.manager.model.upgrade.types.CarWashServiceUpgrade;
+import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import de.tankstelle.manager.model.upgrade.Upgrade;
 
 public class Main extends Application {
     // Referenzen auf Tankanzeigen für spätere Updates
@@ -148,7 +148,7 @@ public class Main extends Application {
         prices.put(FuelType.SUPER_95_E10, 1.78);
         prices.put(FuelType.SUPER_PLUS, 2.02);
         prices.put(FuelType.DIESEL, 1.69);
-        GameState gameState = new GameState(10000, tanks, prices, new GameStatistics());
+        GameState gameState = new GameState(100000, tanks, prices, new GameStatistics());
 
         // Preisvalidierung und Feedback
         priceSuper95.getPriceField().textProperty().addListener((obs, oldVal, newVal) -> {
@@ -296,6 +296,11 @@ public class Main extends Application {
         root.setCenter(centerBox);
 
         simButton.setOnAction(e -> {
+            // Vor dem Starten/Stoppen: Preise aus allen Feldern übernehmen
+            for (FuelType type : FuelType.values()) {
+                PriceInputComponent comp = priceInputs.get(type);
+                applyPriceChange(comp, type, gameState, pricingService);
+            }
             if (simButton.getText().equals("Tankstelle öffnen")) {
                 simulationService.startSimulation();
                 simButton.setText("Tankstelle schließen");
@@ -351,6 +356,7 @@ public class Main extends Application {
                 simulationService.pauseSimulation();
                 Platform.runLater(() -> simButton.setText("Tankstelle öffnen"));
             }
+            Platform.runLater(() -> updatePriceAutomationUI(gameState, priceInputs, marketService, pricingService));
         });
 
         // Upgrade-Stufen pro Tank
@@ -378,7 +384,6 @@ public class Main extends Application {
                 level
             ));
         }
-        dynamicUpgrades.add(new EfficiencyUpgrade("eff1", "Effizienzsteigerung", "Erhöht die Gewinnmarge um 2%.", 3000, List.of(), 0.0, 0.02));
         double automationBasePrice = 8000;
         for (FuelType type : FuelType.values()) {
             dynamicUpgrades.add(new OrderAutomationUpgrade(
@@ -399,6 +404,108 @@ public class Main extends Application {
                 priceAutoBasePrice,
                 List.of(),
                 type
+            ));
+        }
+        // Werkstatt-Technologiebaum
+        String werkstattRootId = "werkstatt_start";
+        dynamicUpgrades.add(new WorkshopServiceUpgrade(
+            werkstattRootId,
+            "Werkstatt einrichten",
+            "Ermöglicht Werkstattdienstleistungen.",
+            7000,
+            List.of(),
+            0
+        ));
+        // 10 Dienstleistungen
+        String[] services = {
+            "Reifenwechsel-Service",
+            "Ölwechsel-Service",
+            "Bremsenservice",
+            "Klimaservice",
+            "Batterie-Service",
+            "Auspuff-Service",
+            "Inspektions-Service",
+            "Scheibenwischer-Service",
+            "Lichttest-Service",
+            "Motor-Diagnose-Service"
+        };
+        double[] serviceRevenues = {5, 4, 6, 3, 4, 5, 7, 2, 3, 8};
+        for (int i = 0; i < services.length; i++) {
+            dynamicUpgrades.add(new WorkshopServiceUpgrade(
+                "werkstatt_service_" + i,
+                services[i],
+                "Bietet " + services[i] + " an. Generiert passiv " + serviceRevenues[i] + " € pro Kunde.",
+                2500 + i * 500,
+                List.of(werkstattRootId),
+                serviceRevenues[i]
+            ));
+        }
+        // Supermarkt-Technologiebaum
+        String supermarktRootId = "supermarkt_start";
+        dynamicUpgrades.add(new SupermarketServiceUpgrade(
+            supermarktRootId,
+            "Supermarkt einrichten",
+            "Ermöglicht Supermarkt-Angebote.",
+            6000,
+            List.of(),
+            0
+        ));
+        // 10 Angebote
+        String[] smServices = {
+            "Backwaren-Theke",
+            "Getränkekühler",
+            "Snack-Regal",
+            "Zeitschriftenständer",
+            "Tabakwaren",
+            "Lotto-Annahmestelle",
+            "Frischetheke",
+            "Kaffeeautomat",
+            "Kühlregal",
+            "Hygieneartikel-Regal"
+        };
+        double[] smRevenues = {2, 3, 2, 1, 2, 2, 3, 2, 2, 1};
+        for (int i = 0; i < smServices.length; i++) {
+            dynamicUpgrades.add(new SupermarketServiceUpgrade(
+                "supermarkt_service_" + i,
+                smServices[i],
+                "Bietet " + smServices[i] + " an. Generiert passiv " + smRevenues[i] + " € pro Kunde.",
+                1800 + i * 400,
+                List.of(supermarktRootId),
+                smRevenues[i]
+            ));
+        }
+        // Waschstraße-Technologiebaum
+        String carWashRootId = "carwash_start";
+        dynamicUpgrades.add(new CarWashServiceUpgrade(
+            carWashRootId,
+            "Waschstraße einrichten",
+            "Ermöglicht Waschstraßen-Dienstleistungen.",
+            8000,
+            List.of(),
+            0
+        ));
+        // 10 Waschstraßen-Dienstleistungen
+        String[] carWashServices = {
+            "Premiumwäsche",
+            "Schaumwäsche",
+            "Unterbodenwäsche",
+            "Felgenreinigung",
+            "Lackversiegelung",
+            "Expresswäsche",
+            "Innenreinigung",
+            "Politur-Service",
+            "Duftpaket",
+            "Textilwäsche"
+        };
+        double[] carWashRevenues = {12, 10, 8, 7, 15, 6, 9, 14, 5, 11};
+        for (int i = 0; i < carWashServices.length; i++) {
+            dynamicUpgrades.add(new CarWashServiceUpgrade(
+                "carwash_service_" + i,
+                carWashServices[i],
+                "Bietet " + carWashServices[i] + " an. Generiert passiv " + carWashRevenues[i] + " € pro Kunde.",
+                3000 + i * 600,
+                List.of(carWashRootId),
+                carWashRevenues[i]
             ));
         }
 
@@ -440,7 +547,7 @@ public class Main extends Application {
         upgradesItem.setOnAction(e -> {
             UpgradeShopDialog dialog = new UpgradeShopDialog(upgradeShopService, () -> {
                 updateTankCapacities(gameState);
-                updatePriceAutomationUI(gameState, priceInputs, marketService);
+                updatePriceAutomationUI(gameState, priceInputs, marketService, pricingService);
             });
             dialog.showAndWait();
         });
@@ -455,7 +562,12 @@ public class Main extends Application {
                 dlg.showAndWait();
                 gameState.setPriceAutomationEnabled(type, dlg.getResultEnabled());
                 gameState.setPriceAutomationMargin(type, dlg.getResultMargin());
-                updatePriceAutomationUI(gameState, priceInputs, marketService);
+                updatePriceAutomationUI(gameState, priceInputs, marketService, pricingService);
+                if (dlg.getResultEnabled()) {
+                    double marktpreis = marketService.getCurrentMarketPrice(type);
+                    comp.updateAutomatedPrice(marktpreis, dlg.getResultMargin());
+                    applyPriceChange(comp, type, gameState, pricingService);
+                }
             });
         }
 
@@ -514,22 +626,23 @@ public class Main extends Application {
     }
 
     // Hilfsmethode: Setzt Preisautomatisierung für alle PriceInputComponents
-    private void updatePriceAutomationUI(GameState gameState, Map<FuelType, PriceInputComponent> priceInputs, MarketService marketService) {
+    private void updatePriceAutomationUI(GameState gameState, Map<FuelType, PriceInputComponent> priceInputs, MarketService marketService, PricingService pricingService) {
         for (FuelType type : FuelType.values()) {
             PriceInputComponent comp = priceInputs.get(type);
             double marktpreis = marketService.getCurrentMarketPrice(type);
             comp.setAutomationUI(gameState, type, marktpreis);
             comp.setAutomationCallback(enabled -> {
                 gameState.setPriceAutomationEnabled(type, enabled);
-                updatePriceAutomationUI(gameState, priceInputs, marketService);
+                updatePriceAutomationUI(gameState, priceInputs, marketService, pricingService);
             });
             comp.setMarginCallback(margin -> {
                 gameState.setPriceAutomationMargin(type, margin);
-                updatePriceAutomationUI(gameState, priceInputs, marketService);
+                updatePriceAutomationUI(gameState, priceInputs, marketService, pricingService);
             });
             if (gameState.isPriceAutomationEnabled(type)) {
                 double margin = gameState.getPriceAutomationMargin(type);
                 comp.updateAutomatedPrice(marktpreis, margin);
+                applyPriceChange(comp, type, gameState, pricingService);
             }
         }
     }

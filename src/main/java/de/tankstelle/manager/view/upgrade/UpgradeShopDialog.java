@@ -28,6 +28,20 @@ public class UpgradeShopDialog extends Stage {
         setMinHeight(400);
 
         categoryBox.getItems().addAll(UpgradeCategory.values());
+        categoryBox.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(UpgradeCategory item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.getDisplayName());
+            }
+        });
+        categoryBox.setButtonCell(new ListCell<>() {
+            @Override
+            protected void updateItem(UpgradeCategory item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item.getDisplayName());
+            }
+        });
         categoryBox.getSelectionModel().selectFirst();
         categoryBox.setOnAction(e -> refreshList());
 

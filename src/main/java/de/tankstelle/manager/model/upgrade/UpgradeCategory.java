@@ -1,10 +1,11 @@
 package de.tankstelle.manager.model.upgrade;
 
 public enum UpgradeCategory {
-    TANK_CAPACITY("Tankkapazität"),
-    EFFICIENCY("Effizienz"),
-    CUSTOMER_SERVICE("Kundenservice"),
-    TECHNOLOGY("Technologie");
+    TANK_CAPACITY("Tankgrößen"),
+    EFFICIENCY("Werkstatt"),
+    CUSTOMER_SERVICE("Einkauf"),
+    TECHNOLOGY("Technologie"),
+    CAR_WASH("Waschstraße");
 
     private final String displayName;
     UpgradeCategory(String displayName) {

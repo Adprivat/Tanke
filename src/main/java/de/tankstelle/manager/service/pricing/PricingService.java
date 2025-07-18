@@ -43,10 +43,7 @@ public class PricingService {
         if (newPrice < 0) {
             throw new InvalidPriceException("Preis darf nicht negativ sein.");
         }
-        double marketPrice = marketService.getCurrentMarketPrice(fuel.getType());
-        if (newPrice < marketPrice * 0.8) {
-            throw new InvalidPriceException("Preis liegt zu weit unter dem Marktpreis.");
-        }
+        // Mindestpreisprüfung entfernt: beliebig niedrige Preise sind erlaubt
         fuel.setBasePrice(newPrice);
     }
 } 
